@@ -11,7 +11,7 @@
 
 ## 使用方法
 
-1. 登录 [fit.shangbanzugroup.com](https://fit.shangbanzugroup.com/h5/)
+1. 自己想办法通过某办公软件获取自己的token不限于抓包或者自己复制链接等
 2. 打开浏览器开发者工具 (F12)
 3. 从 Network 请求中获取你的 Authorization token（格式：`Bearer xxx...`）
 4. 将 `index.js` 第 3 行的 `TOKEN` 变量填入你的 token
