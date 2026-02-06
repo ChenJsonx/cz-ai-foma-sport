@@ -83,7 +83,7 @@
   })();
 })();
 
-// ==================== 运动数据提交（修正版）====================
+// ==================== 运动数据提交（先查询，避免重复版）====================
 (function exerciseSubmitter() {
   if (window.__exerciseSubmitterRunning) {
     console.log('⚠️ 运动任务已在运行，请勿重复启动');
@@ -91,8 +91,17 @@
   }
   window.__exerciseSubmitterRunning = true;
 
-  const TOKEN = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."; // 填入实际Token
+  // 从 localStorage 获取 Token
+  const rawToken = localStorage.getItem('Front-Token');
+  if (!rawToken) {
+    console.error('❌ 错误：localStorage 中没有找到 Front-Token');
+    window.__exerciseSubmitterRunning = false;
+    return;
+  }
   
+  const TOKEN = `Bearer ${rawToken}`;
+  console.log(`✅ Token 获取成功`);
+
   const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
   const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   const formatTime = (date) => date.toLocaleTimeString('zh-CN', { hour12: false });
@@ -100,6 +109,12 @@
   const randomIntervalMs = (minSeconds, maxSeconds) => {
     const seconds = randomInt(minSeconds, maxSeconds);
     return seconds * 1000;
+  };
+
+  // 获取今天的日期字符串 YYYY-MM-DD
+  const getTodayStr = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   };
 
   const exerciseConfigs = [
@@ -120,28 +135,94 @@
     "referrer": "https://fit.shangbanzugroup.com/h5/"
   };
 
+  // ✅ 查询今天是否已做过该运动
+  async function checkTodayExercise(type) {
+    try {
+      const response = await fetch(`https://fit.shangbanzugroup.com/front/v1/fit-record/stats?type=${type}`, {
+        method: "GET",
+        headers: headers,
+        credentials: "include"
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      
+      // 判断 today 中的 sumCount 和 sumDuration
+      const today = data?.data?.today;
+      const sumCount = today?.sumCount || 0;
+      const sumDuration = today?.sumDuration || 0;
+      
+      // 如果都是0，说明今天没做过
+      const hasDoneToday = sumCount > 0 || sumDuration > 0;
+      
+      return {
+        hasDoneToday,
+        todayData: today,
+        stats: data?.data?.stats
+      };
+      
+    } catch (err) {
+      console.error(`   ⚠️ 查询 ${type} 失败:`, err.message);
+      // 查询失败时，默认认为没做过（避免漏做）
+      return { hasDoneToday: false, todayData: null, stats: null, error: err.message };
+    }
+  }
+
+  // 生成运动数据
   const exercises = exerciseConfigs.map(cfg => ({
     ...cfg,
     actualCount: cfg.type === 'plank' ? 0 : randomInt(...cfg.countRange),
     actualDuration: randomInt(...cfg.durationRange)
   }));
 
-  const getExerciseInterval = () => randomIntervalMs(500, 710);
+  // 间隔时间 4-5分钟（240-300秒）
+  const getExerciseInterval = () => randomIntervalMs(240, 300);
 
   const results = [];
+  const todayStr = getTodayStr();
 
   console.log(`\n🏋️ [${formatTime(new Date())}] 开始执行：运动数据提交`);
+  console.log(`   日期: ${todayStr}`);
   console.log(`   共${exercises.length}项运动`);
-  console.log(`   间隔时间: 8分20秒 - 11分50秒 (随机)`);
+  console.log(`   策略: 先查询，今日未做才执行`);
+  console.log(`   间隔时间: 4分00秒 - 5分00秒 (随机)\n`);
 
   (async () => {
     for (let i = 0; i < exercises.length; i++) {
       const ex = exercises[i];
       
-      // ✅ 修正：统一格式 "性别男，体重65kg，身高175cm，运动名X秒，计数X个，"
-      const remark = `性别男，体重65kg，身高175cm，${ex.name}${ex.actualDuration}秒，计数${ex.actualCount}个，`;
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      console.log(`[${i + 1}/${exercises.length}] 🎯 ${ex.name} (${ex.type})`);
+      
+      // ✅ Step 1: 查询今天是否已做过
+      console.log(`   🔍 查询今日记录...`);
+      const checkResult = await checkTodayExercise(ex.type);
+      
+      if (checkResult.hasDoneToday) {
+        console.log(`   ⏭️  今日已做过，跳过`);
+        console.log(`   📊 今日数据: ${checkResult.todayData?.sumCount || 0}个, ${checkResult.todayData?.sumDuration || 0}秒`);
+        results.push({ name: ex.name, skipped: true, reason: '今日已做过', todayData: checkResult.todayData });
+        continue;
+      }
+      
+      console.log(`   ✅ 今日未做，准备执行`);
+      
+      // Step 2: 构造 remark
+      let remark;
+      if (ex.type === 'plank') {
+        remark = `性别男，体重65kg，身高175cm，${ex.name}${ex.actualDuration}秒，`;
+      } else {
+        remark = `性别男，体重65kg，身高175cm，${ex.name}${ex.actualDuration}秒，计数${ex.actualCount}个，`;
+      }
 
+      // Step 3: 执行提交
       try {
+        console.log(`   🚀 开始提交...`);
+        
         const response = await fetch("https://fit.shangbanzugroup.com/front/v1/fit-record", {
           method: "POST",
           headers: headers,
@@ -156,7 +237,7 @@
         
         if (!response.ok) {
           if (response.status === 401 || response.status === 403) {
-            console.error(`🔴 Token 已过期，请更新后重试`);
+            console.error(`   🔴 Token 已过期，请重新登录`);
             break;
           }
           throw new Error(`HTTP ${response.status}`);
@@ -165,13 +246,19 @@
         const text = await response.text();
         const data = text ? JSON.parse(text) : {};
         results.push({ name: ex.name, success: true, data });
-        console.log(`   ✅ ${ex.name} 完成 (${ex.actualDuration}秒, ${ex.actualCount}个)`);
+        
+        if (ex.type === 'plank') {
+          console.log(`   ✅ 提交成功 (${ex.actualDuration}秒)`);
+        } else {
+          console.log(`   ✅ 提交成功 (${ex.actualDuration}秒, ${ex.actualCount}个)`);
+        }
         
       } catch (err) {
         results.push({ name: ex.name, success: false, error: err.message });
-        console.error(`   ❌ ${ex.name} 失败:`, err.message);
+        console.error(`   ❌ 提交失败:`, err.message);
       }
       
+      // Step 4: 等待间隔（最后一项不等待）
       if (i < exercises.length - 1) {
         const intervalMs = getExerciseInterval();
         const min = Math.floor(intervalMs / 60000);
@@ -181,7 +268,18 @@
       }
     }
     
-    console.log(`\n🎉 运动任务完成！成功: ${results.filter(r => r.success).length}/${exercises.length}`);
+    // 统计结果
+    const executed = results.filter(r => r.success).length;
+    const skipped = results.filter(r => r.skipped).length;
+    const failed = results.filter(r => r.success === false).length;
+    
+    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`🎉 运动任务处理完成！`);
+    console.log(`   已执行: ${executed} 项`);
+    console.log(`   已跳过(今日已做): ${skipped} 项`);
+    console.log(`   失败: ${failed} 项`);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    
     window.__exerciseSubmitterRunning = false;
     return results;
   })();
