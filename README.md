@@ -4,6 +4,11 @@
 
 ## 更新日志
 
+### v2.2.0 (2026-02-07)
+- **新增油猴脚本版本**：支持 Tampermonkey/Violentmonkey 安装，无需打开控制台
+- **实时日志面板**：浮动日志窗口，实时显示运动提交进度
+- **一键启动按钮**：页面右下角固定按钮，点击即可开始打卡
+
 ### v2.1.0 (2026-02-06)
 - **Token 自动获取**：运动提交模块改为自动从 `localStorage` 读取 `Front-Token`，无需手动填写
 - **重复检查**：提交前先查询当日记录，已做过的运动自动跳过，避免重复提交
@@ -34,6 +39,16 @@
 - 随机间隔时间，模拟真实操作
 
 ## 使用方法
+
+### 方式一：油猴脚本（推荐）
+
+1. 安装 [Tampermonkey](https://www.tampermonkey.net/) 或 [Violentmonkey](https://violentmonkey.github.io/) 浏览器扩展
+2. 复制 `index.js` 文件末尾的油猴脚本部分（从 `// ==UserScript==` 开始）
+3. 在油猴扩展中新建脚本，粘贴代码并保存
+4. 访问工家云页面（`fit.shangbanzugroup.com/h5/`），登录后点击右下角「🚀 一键运动打卡」按钮
+5. 实时日志面板会显示打卡进度
+
+### 方式二：控制台执行
 
 1. 登录 FOMA Sport 平台（`fit.shangbanzugroup.com/h5/`）
 2. 打开浏览器开发者工具 (F12)
